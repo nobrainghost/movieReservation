@@ -2,6 +2,7 @@ from flask import Flask,session
 from flask import render_template,request,make_response,jsonify
 from database.db import create_customer,start_connection,get_user_by_username
 from werkzeug.security import generate_password_hash,check_password_hash
+import json
 
 app=Flask(__name__)
 app.secret_key='jhsdvhfvajhbf231354354'
@@ -17,6 +18,7 @@ app.secret_key='jhsdvhfvajhbf231354354'
 #     username=request.cookies.get('username')
 #     return jsonify({"username":username})
 
+"""USER AUTHENTICATION BELOW"""
 @app.route("/api/signup", methods=['GET','POST'])
 def signup():
     if request.method=='POST':
@@ -69,6 +71,12 @@ def logout():
        
 
 
+
+"""END USER AUTHENTICATION"""
+
+
+"""MOVIES API BELOW"""
+ #Fetch Movies
 
 
 
