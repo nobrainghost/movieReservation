@@ -378,19 +378,21 @@ def set_movie_showTimes():
     movies=cursor.fetchall()
 
     operational_start_time=time(8,0)
-    print(f"Start: {operational_start_time}")
+    # print(f"Start: {operational_start_time}")
 
-    operational_end_time=time(0,0)
+    operational_end_time=time(23,58)
     current_time=datetime.combine(datetime.today(),operational_start_time)
 
     for movie_id,movie_duration in movies:
         movie_duration=parse_duration(movie_duration)
 ##includes a 30 minutes break
         total_time_needed=movie_duration+30
-        print(f"Before:  {total_time_needed}")
+        # print(f"Before:  {total_time_needed}")
         next_show_time=current_time+timedelta(minutes=total_time_needed)
-
-        if (next_show_time.time()>operational_end_time) and (current_time.time()<operational_end_time):
+        print(next_show_time.time())
+        print(operational_end_time)
+        if (current_time.time()>operational_end_time):
+            print(f"{next_show_time} and {operational_end_time}")
             print(f"Total time needed {current_time+timedelta(minutes=total_time_needed)}")
             print(f"Movie {movie_id} could not be scheduled due to lack of time. ")
             continue
