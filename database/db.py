@@ -80,12 +80,18 @@ customer_password VARCHAR(255),
 customer_email VARCHAR(255)
 """
 
+movie_showTimes_table_columns="""
+show_time VARCHAR(50),
+movie_id INTEGER REFERENCES movie_table(movie_id) ON DELETE CASCADE
+
+"""
 def create_base_tables():
     conn=start_connection()
-    create_table('movie_table',movie_table_columns,conn)
-    create_table('seats_table',seat_table_columns,conn)
+    # create_table('movie_table',movie_table_columns,conn)
+    # create_table('seats_table',seat_table_columns,conn)
     create_table('registred_customers_table',registred_customers_columns,conn)
     create_table('customer_table',customer_table_columns,conn)
+    create_table('movie_showTimes_table',movie_showTimes_table_columns,conn)
 
 create_base_tables()
 
@@ -307,3 +313,115 @@ VALUES
 
 # conn=start_connection()
 # populate_seats(conn)
+
+#reset all seats
+#Single USe
+def reset_all_seats():
+    conn=start_connection()
+    cursor=conn.cursor()
+    query="""
+    UPDATE seats_table
+    SET seat_book_time=NULL, seat_free_time=NULL,seat_is_in_use=FALSE;
+    """
+    cursor.execute(query)
+    conn.commit()
+    print("All seats have been Reset to Available")
+
+#reset_single_seat
+def reset_specific_seat(seat_id):
+    conn=start_connection()
+    cursor=conn.cursor()
+    query="""
+    UPDATE seats_table
+    SET seat_is_in_use = FALSE, seat_book_time=NULL,seat_free_time=NULL
+    WHERE seat_id=%s;
+    """
+    cursor.execute(query,(seat_id,))
+    conn.commit()
+
+
+#check_if_seat_available
+def check_is_seat_available(seat_id):
+    conn=start_connection()
+    cursor=conn.cursor()
+    query="""
+    SELECT seat_is_in_use FROM seats_table WHERE seat_id=%s;
+    """
+    cursor.execute(query,(seat_id,))
+    result=cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if result and not[0]:
+        return 1
+    else:
+        return 0
+##supposed ot takee the time stored as a string and turn it into Time
+def parse_duration(duration_string):
+    hours=0
+    minutes=0
+    if 'hours' in duration_string:
+        hours=int(duration_string.split('hours')[0].strip())
+        if  'minutes' in duration_string:
+            minutes=int(duration_string.split('hours')[1].replace('minutes','').strip())
+    else:
+        if 'minutes' in duration_string:
+            minutes=int(duration_string.replace('minutes','').strip())
+    print(hours*60+minutes)
+    return hours*60+minutes
+
+def set_movie_showTimes():
+    from datetime import datetime, timedelta,time
+    conn=start_connection()
+    cursor=conn.cursor()
+    cursor.execute("SELECT movie_id, movie_duration FROM movie_table;")
+    movies=cursor.fetchall()
+
+    operational_start_time=time(8,0)
+    print(f"Start: {operational_start_time}")
+
+    operational_end_time=time(0,0)
+    current_time=datetime.combine(datetime.today(),operational_start_time)
+
+    for movie_id,movie_duration in movies:
+        movie_duration=parse_duration(movie_duration)
+##includes a 30 minutes break
+        total_time_needed=movie_duration+30
+        print(f"Before:  {total_time_needed}")
+        next_show_time=current_time+timedelta(minutes=total_time_needed)
+
+        if (next_show_time.time()>operational_end_time) and (current_time.time()<operational_end_time):
+            print(f"Total time needed {current_time+timedelta(minutes=total_time_needed)}")
+            print(f"Movie {movie_id} could not be scheduled due to lack of time. ")
+            continue
+
+        show_time=current_time
+        
+        query="""
+        UPDATE movie_showTimes_table
+        SET show_time=%s
+        WHERE movie_id=%s;
+        """
+        cursor.execute(query,(show_time.strftime("%H:%M"),movie_id))
+
+        print(f"Scheduled movie {movie_id} at {show_time.strftime('%H:%M')}")
+
+        current_time=next_show_time
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+set_movie_showTimes()
+def get_movie_endtime(movie_id):
+    pass
+
+def book_seat(seat_number,movie_id):
+    conn=start_connection()
+    cursor=conn.cursor()
+
+    if check_is_seat_available()==1:
+        query="""
+        UPDATE seats_table 
+        SET seat_is_in_use=TRUE, seat_book_time=CURRENT_TIMESTAMP
+        """
+    
