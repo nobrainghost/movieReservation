@@ -1,7 +1,7 @@
 
 import psycopg2
 from psycopg2 import sql,Error
-
+from datetime import datetime, timedelta,time
 import os
 
 class Config:
@@ -82,6 +82,7 @@ customer_email VARCHAR(255)
 
 movie_showTimes_table_columns="""
 show_time VARCHAR(50),
+movie_duration_minutes INTEGER,
 movie_id INTEGER REFERENCES movie_table(movie_id) ON DELETE CASCADE
 
 """
@@ -338,6 +339,7 @@ def reset_specific_seat(seat_id):
     """
     cursor.execute(query,(seat_id,))
     conn.commit()
+    print(f"Seat {seat_id} reset to Available")
 
 
 #check_if_seat_available
@@ -371,11 +373,11 @@ def parse_duration(duration_string):
     return hours*60+minutes
 
 def set_movie_showTimes():
-    from datetime import datetime, timedelta,time
     conn=start_connection()
     cursor=conn.cursor()
     cursor.execute("SELECT movie_id, movie_duration FROM movie_table;")
     movies=cursor.fetchall()
+    # print(movies)
 
     operational_start_time=time(8,0)
     # print(f"Start: {operational_start_time}")
@@ -389,8 +391,9 @@ def set_movie_showTimes():
         total_time_needed=movie_duration+30
         # print(f"Before:  {total_time_needed}")
         next_show_time=current_time+timedelta(minutes=total_time_needed)
-        print(next_show_time.time())
-        print(operational_end_time)
+        # print(next_show_time.time())
+        # print(operational_end_time)
+        
         if (current_time.time()>operational_end_time):
             print(f"{next_show_time} and {operational_end_time}")
             print(f"Total time needed {current_time+timedelta(minutes=total_time_needed)}")
@@ -398,32 +401,65 @@ def set_movie_showTimes():
             continue
 
         show_time=current_time
-        
-        query="""
-        UPDATE movie_showTimes_table
-        SET show_time=%s
-        WHERE movie_id=%s;
+        ##Error Arose here due to a bad SQL query using UPDATE instead of INSERT
+        query = """
+            INSERT INTO movie_showtimes_table (show_time, movie_duration_minutes, movie_id)
+            VALUES (%s, %s, %s);
         """
-        cursor.execute(query,(show_time.strftime("%H:%M"),movie_id))
+        cursor.execute(query,(show_time.strftime("%H:%M"),total_time_needed,movie_id))
 
-        print(f"Scheduled movie {movie_id} at {show_time.strftime('%H:%M')}")
 
+        # print(show_time.strftime("%H:%M"),total_time_needed,movie_id)
         current_time=next_show_time
-    conn.commit()
+        conn.commit()
     cursor.close()
     conn.close()
 
-set_movie_showTimes()
+# set_movie_showTimes()
 def get_movie_endtime(movie_id):
     pass
 
 def book_seat(seat_number,movie_id):
     conn=start_connection()
     cursor=conn.cursor()
+    query="""SELECT show_time FROM movie_showtimes_table WHERE movie_id=%s"""
+    cursor.execute(query,(movie_id,))
+    result=cursor.fetchone()
+    ##returns a tuple('08:00',)
+    time_string=result[0]
+    now=datetime.now()
+    time_result=datetime.strptime(time_string,'%H:%M').replace(year=now.year,month=now.month,day=now.day)
+    time_time_stamp=time_result.timestamp()
+    result=datetime.fromtimestamp(time_time_stamp)
+    # print(result)
+    query2="""SELECT movie_duration_minutes FROM movie_showtimes_table WHERE movie_id=%s"""
+    cursor.execute(query2,(movie_id,))
+    duration=cursor.fetchone()
+    duration_tuple=duration[0]
+    duration=int(duration_tuple)
+    # print(duration)
+    endtime=datetime.now()+timedelta(minutes=duration)
 
-    if check_is_seat_available()==1:
+
+    if check_is_seat_available(seat_number)==0:
+        print("***********")
+        conn=start_connection()
+        cursor=conn.cursor()
+
         query="""
         UPDATE seats_table 
-        SET seat_is_in_use=TRUE, seat_book_time=CURRENT_TIMESTAMP
+        SET seat_is_in_use=TRUE, seat_book_time=%s,seat_free_time=%s,movie_id=%s;
         """
+        cursor.execute(query,(result,endtime,movie_id))
+        print(result,endtime,movie_id,seat_number)
+        conn.commit()
+        cursor.close()
+        print(f"Seat number {seat_number} has been booked succefully for {result}")
+    else:
+        print ({"error":"seat is booked for that time"})
+
+# reset_specific_seat(15)
+# print(check_is_seat_available(15))
+# book_seat(15,1)
+
     
