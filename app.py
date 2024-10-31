@@ -4,7 +4,8 @@ from datetime import datetime
 import psycopg2
 from functools import wraps
 import os
-
+from database.db import start_connection,book,check_overlaps,reset_specific_seat,fetch_movies,update_movies_to_be_shown,set_movie_showTimes,clear_movies_table
+conn=start_connection()
 app = Flask(__name__)
 
 # Database connection
@@ -127,8 +128,10 @@ def get_movies():
 @app.route('/api/movies/update', methods=['POST'])
 @handle_errors
 def update_movies():
-    # This would typically call the fetch_movies() and update_movies_to_be_shown() functions
-    # Implementation depends on the actual movie fetching logic
+    clear_movies_table(conn)
+    update_movies_to_be_shown(conn)
+    set_movie_showTimes()
+  
     return jsonify({'message': 'Movies updated successfully'})
 
 @app.route('/api/movies/showtimes', methods=['GET'])
@@ -207,20 +210,7 @@ def reset_seats():
 @app.route('/api/seats/reset/<int:seat_id>', methods=['POST'])
 @handle_errors
 def reset_seat(seat_id):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE seats_table 
-                SET seat_is_in_use = FALSE, 
-                    seat_free_time = CURRENT_TIMESTAMP,
-                    movie_id = NULL
-                WHERE seat_id = %s
-            """, (seat_id,))
-            
-            if cur.rowcount == 0:
-                return jsonify({'error': 'Seat not found'}), 404
-                
-            conn.commit()
+    reset_specific_seat(seat_id)
             
     return jsonify({'message': f'Seat {seat_id} reset successfully'})
 
@@ -248,46 +238,10 @@ def create_booking():
     seat_id = data.get('seat_id')
     movie_id = data.get('movie_id')
     customer_id = data.get('customer_id')
-    
     if not all([seat_id, movie_id, customer_id]):
         return jsonify({'error': 'Missing required fields'}), 400
         
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            # Check if seat is available
-            cur.execute("""
-                SELECT seat_is_in_use 
-                FROM seats_table 
-                WHERE seat_id = %s
-            """, (seat_id,))
-            result = cur.fetchone()
-            
-            if not result:
-                return jsonify({'error': 'Invalid seat'}), 404
-            if result[0]:
-                return jsonify({'error': 'Seat is already booked'}), 409
-                
-            # Create booking
-            cur.execute("""
-                INSERT INTO bookings_table 
-                (seat_id, movie_id, customer_id, booking_start_time, booking_end_time)
-                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, 
-                        CURRENT_TIMESTAMP + INTERVAL '3 hours')
-                RETURNING booking_id
-            """, (seat_id, movie_id, customer_id))
-            
-            booking_id = cur.fetchone()[0]
-            
-            # Update seat status
-            cur.execute("""
-                UPDATE seats_table 
-                SET seat_is_in_use = TRUE, 
-                    movie_id = %s 
-                WHERE seat_id = %s
-            """, (movie_id, seat_id))
-            
-            conn.commit()
-            
+    booking_id=book(seat_id,movie_id,customer_id)
     return jsonify({
         'message': 'Booking created successfully',
         'booking_id': booking_id

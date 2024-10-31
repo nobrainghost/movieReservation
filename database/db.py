@@ -1,4 +1,4 @@
-
+##Most files in this page are for testing purposes and are not used in the final project
 import psycopg2
 from psycopg2 import sql,Error
 from datetime import datetime, timedelta,time
@@ -147,6 +147,7 @@ def get_user_by_username(username,conn):
 """MOVIES API"""
 
 def fetch_movies():
+    print("Fetching Movies")
     import requests
 
     url = "https://imdb-top-lists-news.p.rapidapi.com/popularMovies"
@@ -157,6 +158,7 @@ def fetch_movies():
     }
 
     response = requests.get(url, headers=headers)
+    print(response.status_code)
 
     response=response.json()
     trending_movies=[]
@@ -170,11 +172,17 @@ def fetch_movies():
         trending_movies.append(movie_list)
         # print(movie_name, movie_duration)
         # print(release_year)
+        print("Movies Fetched")
 
     return trending_movies
 
 # print(fetch_movies())
-
+def clear_movies_table(conn):
+    cursor=conn.cursor()
+    query="DELETE FROM movie_table"
+    cursor.execute(query)
+    conn.commit()
+    print("Movies Table Cleared")
 
 def update_movies_to_be_shown(conn):
     sql_query=f"INSERT INTO movie_table(movie_name,movie_duration,movie_poster,release_year) VALUES (%s,%s,%s,%s)"
@@ -188,6 +196,8 @@ def update_movies_to_be_shown(conn):
         # movie_poster=movie[2]
         cursor.execute(sql_query,movie)
         conn.commit()
+    print("Movies Updated")
+
 # conn=start_connection()
 # update_movies_to_be_shown(conn)
 
@@ -461,7 +471,7 @@ def book_seat(seat_number,movie_id):
     else:
         print ({"error":"seat is booked for that time"})
 
-reset_specific_seat(15)
+# reset_specific_seat(15)
 # print(check_is_seat_available(15))
 # book_seat(15,1)
 # print(check_is_seat_available(15))
@@ -548,8 +558,16 @@ def book(seat_id,movie_id,customer_id):
 
     cursor.close()
     conn.close()
+    ##fetch created booking id
+    conn=start_connection()
+    cursor=conn.cursor()
+    query3="""SELECT booking_id FROM bookings_table WHERE seat_id=%s AND movie_id=%s AND customer_id=%s"""
+    cursor.execute(query3,(seat_id,movie_id,customer_id))
+    booking_id=cursor.fetchone()
+    cursor.close()
+    conn.close()
 
-    return "Booking created successfully."
+    return booking_id
 
 # print(book(16,2))
 ##Booking now works, next step is to link the bookings to the customer
