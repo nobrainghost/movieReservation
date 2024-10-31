@@ -1,189 +1,264 @@
-## README for Movies Reservation System API
+# Movie Reservation System Documentation
 
-This README provides detailed documentation for the Movies Reservation System API, outlining its functions, parameters, and how to use each API. The code leverages PostgreSQL for database management and supports functions for managing movies, customers, seats, and showtimes.
+A PostgreSQL-based movie theater reservation system that handles movie listings, seat management, bookings, and payments.
 
-### Table of Contents
-1. [Getting Started](#getting-started)
-2. [Configuration](#configuration)
-3. [API Functions](#api-functions)
-    - [Database Connection](#database-connection)
-    - [Table Creation](#table-creation)
-    - [Customer Management](#customer-management)
-    - [Movie Management](#movie-management)
-    - [Seat Management](#seat-management)
-    - [Utility Functions](#utility-functions)
+## Table of Contents
+- [Database Configuration](#database-configuration)
+- [Core Functions](#core-functions)
+- [API Endpoints](#api-endpoints)
+- [Database Schema](#database-schema)
 
----
+## Database Configuration
 
-### Getting Started
+```python
+DATABASE_URL = 'dbname=moviesreservation user=beamer password=allhailkingjulien host=localhost'
+```
 
-1. Install PostgreSQL and Python libraries:
-    ```bash
-    pip install psycopg2 werkzeug flask-login requests
-    ```
-2. Clone the repository and set up environment variables, including `DATABASE_URL`.
+### Connection Management
+- `start_connection()`: Establishes database connection using configured credentials
+- `create_table(table_name, columns, conn)`: Creates database tables with specified schema
 
-3. Execute the provided scripts for database setup, and start managing movie reservations, customers, and seat bookings.
+## Core Functions
 
----
+### User Management
 
-### Configuration
+#### `create_customer(username, password, email, conn)`
+Creates a new customer account with hashed password.
 
-1. **DATABASE_URL**: The database URL is set through an environment variable.
-    - Format for local usage: `'dbname=moviesreservation user=beamer password=allhailkingjulien host=localhost'`
-  
----
+```python
+# Example usage
+create_customer('johndoe', 'password123', 'john@example.com', conn)
+```
 
-### API Functions
+#### `verify_user(username, hashed_password, conn)` 
+Verifies user credentials and returns user data if valid.
 
-#### 1. Database Connection
+```python
+# Example usage
+user_data = verify_user('johndoe', 'hashed_password', conn)
+```
 
-- **Function**: `start_connection()`
-    - **Description**: Establishes a connection to the PostgreSQL database.
-    - **Returns**: A database connection object if successful.
-    - **Usage**:
-      ```python
-      conn = start_connection()
-      ```
+#### `get_user_by_username(username, conn)`
+Retrieves user details by username.
 
-#### 2. Table Creation
+```python
+# Example usage
+user = get_user_by_username('johndoe', conn)
+```
 
-- **Function**: `create_table(table_name, columns, conn)`
-    - **Description**: Creates a database table.
-    - **Parameters**:
-      - `table_name` (str): Name of the table to create.
-      - `columns` (str): Columns definition in SQL format.
-      - `conn`: Database connection object.
-    - **Usage**:
-      ```python
-      create_table('movie_table', movie_table_columns, conn)
-      ```
+### Movie Management
 
-- **Function**: `create_base_tables()`
-    - **Description**: Creates base tables necessary for the reservation system.
-    - **Usage**:
-      ```python
-      create_base_tables()
-      ```
+#### `fetch_movies()`
+Fetches trending movies from IMDB API.
+- Returns: List of movies with title, duration, poster URL, and release year
 
-#### 3. Customer Management
+#### `update_movies_to_be_shown(conn)`
+Updates database with fetched movies.
 
-- **Function**: `create_customer(username, password, email, conn)`
-    - **Description**: Registers a new customer with hashed password storage.
-    - **Parameters**:
-      - `username` (str): Customer’s username.
-      - `password` (str): Plain text password.
-      - `email` (str): Customer’s email address.
-      - `conn`: Database connection object.
-    - **Usage**:
-      ```python
-      create_customer('john_doe', 'secure_password', 'john@example.com', conn)
-      ```
+#### `set_movie_showTimes()`
+Automatically generates show times for all movies:
+- Operational hours: 8:00 AM - 11:58 PM
+- Includes 30-minute breaks between shows
+- Handles duration parsing and scheduling
 
-- **Function**: `verify_user(username, hashed_password, conn)`
-    - **Description**: Verifies the user’s login credentials.
-    - **Parameters**:
-      - `username` (str): Customer’s username.
-      - `hashed_password` (str): Hashed password.
-      - `conn`: Database connection object.
-    - **Returns**: A dictionary with user information if credentials match, otherwise `None`.
-    - **Usage**:
-      ```python
-      user = verify_user('john_doe', 'hashed_password', conn)
-      ```
+### Seat Management
 
-- **Function**: `get_user_by_username(username, conn)`
-    - **Description**: Retrieves user data based on username.
-    - **Parameters**:
-      - `username` (str): Username to search.
-      - `conn`: Database connection object.
-    - **Returns**: User information or `None`.
-    - **Usage**:
-      ```python
-      user = get_user_by_username('john_doe', conn)
-      ```
+#### `populate_seats(conn)`
+Initializes theater seats with:
+- Front seats (20): $40-50
+- Middle seats (60): $25-40
+- Back seats (20): $12-25
+- Various amenities (headphones, cupholders, corner positions)
 
-#### 4. Movie Management
+#### `reset_all_seats()`
+Resets all seats to available status.
 
-- **Function**: `fetch_movies()`
-    - **Description**: Fetches popular movies from an external API.
-    - **Returns**: List of dictionaries with movie details.
-    - **Usage**:
-      ```python
-      movies = fetch_movies()
-      ```
+#### `reset_specific_seat(seat_id)`
+Resets a specific seat to available status.
 
-- **Function**: `update_movies_to_be_shown(conn)`
-    - **Description**: Inserts movies from `fetch_movies()` into the database.
-    - **Parameters**:
-      - `conn`: Database connection object.
-    - **Usage**:
-      ```python
-      update_movies_to_be_shown(conn)
-      ```
+#### `check_is_seat_available(seat_id)`
+Checks seat availability:
+- Returns 0: Available
+- Returns 1: Booked
+- Returns "seat does not exist": Invalid seat
 
-#### 5. Seat Management
+### Booking Management
 
-- **Function**: `populate_seats(conn)`
-    - **Description**: Populates the `seats_table` with seat information.
-    - **Parameters**:
-      - `conn`: Database connection object.
-    - **Usage**:
-      ```python
-      populate_seats(conn)
-      ```
+#### `check_overlaps(seat_id, start_time, end_time)`
+Checks for booking time conflicts.
 
-- **Function**: `reset_all_seats()`
-    - **Description**: Resets all seats to available status.
-    - **Usage**:
-      ```python
-      reset_all_seats()
-      ```
+#### `book(seat_id, movie_id, customer_id)`
+Creates a new booking:
+- Validates seat availability
+- Checks time conflicts
+- Creates booking record
+- Returns confirmation or error message
 
-- **Function**: `reset_specific_seat(seat_id)`
-    - **Description**: Resets a specific seat based on `seat_id`.
-    - **Parameters**:
-      - `seat_id` (int): Seat ID to reset.
-    - **Usage**:
-      ```python
-      reset_specific_seat(15)
-      ```
+#### `get_bookings_by_customer(customer_id)`
+Retrieves all bookings for a specific customer.
 
-- **Function**: `check_is_seat_available(seat_id)`
-    - **Description**: Checks if a seat is available for booking.
-    - **Parameters**:
-      - `seat_id` (int): Seat ID to check.
-    - **Returns**: `0` if available, `1` if booked, or a message if the seat doesn't exist.
-    - **Usage**:
-      ```python
-      status = check_is_seat_available(15)
-      ```
+#### `delete_booking(booking_id)`
+Cancels a specific booking.
 
-#### 6. Utility Functions
+### Payment Processing
 
-- **Function**: `parse_duration(duration_string)`
-    - **Description**: Parses a movie duration string into total minutes.
-    - **Parameters**:
-      - `duration_string` (str): Duration string (e.g., "2 hours 30 minutes").
-    - **Returns**: Total minutes as an integer.
-    - **Usage**:
-      ```python
-      total_minutes = parse_duration("2 hours 30 minutes")
-      ```
+#### `get_price(seat_id)`
+Retrieves price for specific seat.
 
-- **Function**: `set_movie_showTimes()`
-    - **Description**: Calculates showtimes for each movie and populates the `movie_showTimes_table`.
-    - **Usage**:
-      ```python
-      set_movie_showTimes()
-      ```
+#### `make_payment(customer_id, amount, booking_id)`
+Processes payment and confirms booking.
 
-- **Function**: `book_seat(seat_number, movie_id)`
-    - **Description**: Books a seat for a specified movie.
-    - **Parameters**:
-      - `seat_number` (int): Seat number to book.
-      - `movie_id` (int): ID of the movie for which the seat is being booked.
-    - **Usage**:
-      ```python
-      book_seat(15, 1)
-      ```
+## API Endpoints
+
+### User Management
+```
+POST /api/users/register
+{
+    "username": string,
+    "password": string,
+    "email": string
+}
+
+POST /api/users/login
+{
+    "username": string,
+    "password": string
+}
+
+GET /api/users/{username}
+```
+
+### Movies
+```
+GET /api/movies
+Returns list of available movies
+
+POST /api/movies/update
+Updates movie database with latest trending movies
+
+GET /api/movies/showtimes
+Returns all movie showtimes
+```
+
+### Seats
+```
+GET /api/seats
+Returns all seats with status
+
+GET /api/seats/{seat_id}
+Returns specific seat details
+
+POST /api/seats/reset
+Resets all seats to available
+
+POST /api/seats/reset/{seat_id}
+Resets specific seat to available
+
+GET /api/seats/check/{seat_id}
+Checks seat availability
+```
+
+### Bookings
+```
+POST /api/bookings
+{
+    "seat_id": integer,
+    "movie_id": integer,
+    "customer_id": integer
+}
+
+GET /api/bookings/customer/{customer_id}
+Returns all bookings for customer
+
+DELETE /api/bookings/{booking_id}
+Cancels specific booking
+```
+
+### Payments
+```
+GET /api/payments/price/{seat_id}
+Returns price for specific seat
+
+POST /api/payments
+{
+    "customer_id": integer,
+    "amount": float,
+    "booking_id": integer
+}
+```
+
+## Database Schema
+
+### movie_table
+```sql
+CREATE TABLE movie_table (
+    movie_id SERIAL PRIMARY KEY,
+    movie_name VARCHAR(256),
+    movie_duration VARCHAR(50) NOT NULL,
+    start_time TIME,
+    end_time TIME,
+    available_seats INTEGER[],
+    start_times TIMESTAMP[],
+    movie_poster VARCHAR(256),
+    release_year INTEGER
+);
+```
+
+### seats_table
+```sql
+CREATE TABLE seats_table (
+    seat_id SERIAL PRIMARY KEY,
+    seat_category VARCHAR(20) CHECK(seat_category IN ('Front','Middle','Backseat')),
+    seat_price DECIMAL(10,2),
+    seat_book_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    seat_free_time TIMESTAMP,
+    seat_is_in_use BOOLEAN DEFAULT TRUE,
+    seat_is_corner BOOLEAN DEFAULT FALSE,
+    seat_has_headphones BOOLEAN DEFAULT FALSE,
+    seat_has_cupholder BOOLEAN DEFAULT FALSE,
+    movie_id INTEGER REFERENCES movie_table(movie_id) ON DELETE CASCADE
+);
+```
+
+### bookings_table
+```sql
+CREATE TABLE bookings_table (
+    booking_id SERIAL PRIMARY KEY,
+    seat_id INTEGER REFERENCES seats_table(seat_id) ON DELETE CASCADE,
+    movie_id INTEGER REFERENCES movie_table(movie_id) ON DELETE CASCADE,
+    booking_start_time TIMESTAMP,
+    booking_end_time TIMESTAMP,
+    is_confirmed BOOLEAN DEFAULT TRUE,
+    customer_id INTEGER REFERENCES registred_customers_table(customer_id) ON DELETE CASCADE
+);
+```
+
+### registred_customers_table
+```sql
+CREATE TABLE registred_customers_table (
+    customer_id SERIAL PRIMARY KEY,
+    customer_username VARCHAR(255),
+    customer_password VARCHAR(255),
+    customer_email VARCHAR(255)
+);
+```
+
+## Error Handling
+- All functions include appropriate error handling
+- Database connection errors are caught and logged
+- Invalid seat/movie IDs return appropriate error messages
+- Booking conflicts are properly handled and reported
+
+## Dependencies
+- psycopg2: PostgreSQL adapter for Python
+- werkzeug.security: Password hashing
+- requests: API calls for movie data
+- datetime: Time and date handling
+
+## Installation
+1. Set up PostgreSQL database
+2. Configure DATABASE_URL
+3. Run table creation scripts
+4. Initialize seats with `populate_seats()`
+5. Fetch initial movies with `update_movies_to_be_shown()`
+6. Set up show times with `set_movie_showTimes()`
