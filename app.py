@@ -1,6 +1,6 @@
 from flask import Flask,session
 from flask import render_template,request,make_response,jsonify
-from database.db import create_customer,start_connection,get_user_by_username
+from database.db import create_customer,start_connection,get_user_by_username,book_seat
 from werkzeug.security import generate_password_hash,check_password_hash
 import json
 
@@ -79,6 +79,10 @@ def logout():
  #Fetch Movies
 
 
-
-
-
+# @app.route("/api/book",methods=['GET','POST'])
+# def book():
+#     if request.method=='GET':
+#         data=request.json
+#         seat_id=request['seat_id']
+#         movie=request['movie_id']
+#         book_seat(seat_id,movie)

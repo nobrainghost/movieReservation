@@ -70,7 +70,8 @@ customer_name VARCHAR(100),
 customer_booked_seat INTEGER REFERENCES seats_table(seat_id) ON DELETE CASCADE,
 customer_email VARCHAR(50),
 customer_payment_method VARCHAR(50),
-is_couple BOOLEAN DEFAULT FALSE
+is_couple BOOLEAN DEFAULT FALSE,
+booking_id INTEGER REFERENCES bookings_table(booking_id) ON DELETE CASCADE
 
 """
 registred_customers_columns="""
@@ -94,7 +95,7 @@ def create_base_tables():
     create_table('customer_table',customer_table_columns,conn)
     create_table('movie_showTimes_table',movie_showTimes_table_columns,conn)
 
-create_base_tables()
+# create_base_tables()
 
 ##move these to a separate file and import the commands
 #basic functions
@@ -176,7 +177,7 @@ def fetch_movies():
 
 
 def update_movies_to_be_shown(conn):
-    sql_query=f"INSERt INTO movie_table(movie_name,movie_duration,movie_poster,release_year) VALUES (%s,%s,%s,%s)"
+    sql_query=f"INSERT INTO movie_table(movie_name,movie_duration,movie_poster,release_year) VALUES (%s,%s,%s,%s)"
 
     cursor=conn.cursor()
     movies=fetch_movies()
@@ -354,11 +355,13 @@ def check_is_seat_available(seat_id):
     cursor.close()
     conn.close()
 
-    if result and not[0]:
-        return 1
+    if result and result[0]==1: 
+        return 1 #already booked
+    elif result and result[0]==0:
+        return 0 #available
     else:
-        return 0
-##supposed ot takee the time stored as a string and turn it into Time
+        return "seat does not exist"
+##supposed to take the time stored as a string and turn it into Time
 def parse_duration(duration_string):
     hours=0
     minutes=0
@@ -438,7 +441,7 @@ def book_seat(seat_number,movie_id):
     duration_tuple=duration[0]
     duration=int(duration_tuple)
     # print(duration)
-    endtime=datetime.now()+timedelta(minutes=duration)
+    endtime=result+timedelta(minutes=duration)
 
 
     if check_is_seat_available(seat_number)==0:
@@ -458,8 +461,152 @@ def book_seat(seat_number,movie_id):
     else:
         print ({"error":"seat is booked for that time"})
 
-# reset_specific_seat(15)
+reset_specific_seat(15)
 # print(check_is_seat_available(15))
 # book_seat(15,1)
+# print(check_is_seat_available(15))
 
     
+## If a seat is booked, it won't show up in the available seats for the other movies. Correct that logic and link the seats to the customer.
+## Solved this by Separating seats from bookings, introducing a new bookings table
+
+# CREATE TABLE bookings_table (
+#     booking_id SERIAL PRIMARY KEY,
+#     seat_id INTEGER REFERENCES seats_table(seat_id) ON DELETE CASCADE,
+#     movie_id INTEGER REFERENCES movie_table(movie_id) ON DELETE CASCADE,
+#     booking_start_time TIMESTAMP,
+#     booking_end_time TIMESTAMP,
+#     is_confirmed BOOLEAN DEFAULT TRUE,
+#     customer_id INTEGER REFERENCES registred_customers_table(customer_id) ON DELETE CASCADE
+    
+# );
+
+##check overlaps
+def check_overlaps(seat_id, start_time, end_time):
+    conn = start_connection()
+    cursor = conn.cursor()
+
+    # Query to check if any overlapping bookings exist for the same seat
+    query = """
+    SELECT COUNT(*)
+    FROM bookings_table
+    WHERE seat_id = %s
+      AND booking_start_time < %s
+      AND booking_end_time > %s
+      AND is_confirmed = TRUE;
+    """
+    cursor.execute(query, (seat_id, end_time, start_time))
+    (overlap_count,) = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return overlap_count == 0
+
+## New book functions
+
+def book(seat_id,movie_id,customer_id):   
+    conn=start_connection()
+    cursor=conn.cursor()
+    query1="""SELECT show_time FROM movie_showtimes_table WHERE movie_id=%s"""
+    cursor.execute(query1,(movie_id,))
+    result=cursor.fetchone()
+    if not result:
+        cursor.close()
+        conn.close()
+        return {"error":"Movie not found"}
+    ##returns a tuple('08:00',)
+    time_string=result[0]
+    now=datetime.now()
+    time_result=datetime.strptime(time_string,'%H:%M').replace(year=now.year,month=now.month,day=now.day)
+    time_time_stamp=time_result.timestamp()
+    result=datetime.fromtimestamp(time_time_stamp)
+    query2="""SELECT movie_duration_minutes FROM movie_showtimes_table WHERE movie_id=%s"""
+    cursor.execute(query2,(movie_id,))
+    duration=cursor.fetchone()
+    duration_tuple=duration[0]
+    duration=int(duration_tuple)
+    # print(duration)
+    endtime=result+timedelta(minutes=duration)
+    print(result,endtime,duration)
+    if not duration:
+        cursor.close()
+        conn.close()
+        return {"error":"Movie not found"}
+    if not check_overlaps(seat_id,result,endtime):
+        cursor.close()
+        conn.close()
+        return {"error":"Seat is already booked"}
+    
+    
+    insert_query = """
+    INSERT INTO bookings_table (seat_id, movie_id,customer_id, booking_start_time, booking_end_time, is_confirmed)
+    VALUES (%s, %s, %s, %s, TRUE);
+    """
+    cursor.execute(insert_query, (seat_id, movie_id,customer_id ,result, endtime))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return "Booking created successfully."
+
+# print(book(16,2))
+##Booking now works, next step is to link the bookings to the customer
+##Introduced a new column in the bookings table to store the customer_id
+
+def get_bookings_by_customer(customer_id):
+    conn=start_connection()
+    cursor=conn.cursor()
+    query="""
+    SELECT booking_id, seat_id, movie_id, booking_start_time, booking_end_time
+    FROM bookings_table
+    WHERE customer_id=%s
+    """
+    cursor.execute(query,(customer_id,))
+    bookings=cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return bookings
+
+def delete_booking(booking_id):
+    conn=start_connection()
+    cursor=conn.cursor()
+    query="""
+    DELETE FROM bookings_table
+    WHERE booking_id=%s
+    """
+    cursor.execute(query,(booking_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return "Booking deleted successfully"
+
+##Payments API
+def get_price(seat_id):
+    conn=start_connection()
+    cursor=conn.cursor()
+    query="""
+    SELECT seat_price FROM seats_table WHERE seat_id=%s
+    """
+    cursor.execute(query,(seat_id,))
+    price=cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return price[0]
+def make_payment(customer_id, amount,booking_id):
+    conn=start_connection()
+    cursor=conn.cursor()
+    query="""
+    INSERT INTO payments_table (customer_id, amount)
+    VALUES (%s, %s)
+    """
+    ##Edit is_confirmed to True
+    query2="""
+    UPDATE bookings_table SET is_confirmed=TRUE WHERE booking_id=%s"""
+    cursor.execute(query2,(booking_id,))
+    cursor.execute(query,(customer_id,amount))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return "Payment made successfully"
